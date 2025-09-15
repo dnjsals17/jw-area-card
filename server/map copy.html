@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <title>폴리곤 내부 주소 마커 표시</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    header { padding: 10px 12px; border-bottom: 1px solid #eee; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    header > * { margin: 2px 0; }
+    label { font-size: 14px; }
+    input[type="text"], input[type="number"], select { padding: 6px 8px; border: 1px solid #ddd; border-radius: 6px; }
+    button { padding: 8px 12px; border: 0; border-radius: 8px; background: #222; color: #fff; cursor: pointer; }
+    button.secondary { background: #666; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    #map { width: 100%; height: calc(100vh - 170px); }
+    #panel { padding: 10px 12px; border-top: 1px solid #eee; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    #status { font-size: 13px; color: #555; white-space: pre-wrap; }
+    #result { font-size: 13px; color: #0a7; }
+    .hint { font-size: 12px; color: #888; }
+    .badge { display: inline-block; padding: 2px 6px; font-size: 12px; border-radius: 999px; background: #f1f1f1; }
+  </style>
+</head>
+<body>
+  <header>
+    <strong>폴리곤 내부 주소 검색</strong>
+    <span class="badge">클릭으로 꼭짓점 추가 · 우클릭으로 종료</span>
+
+    <label>시도
+      <input id="sidonm" type="text" value="경기도" />
+    </label>
+    <label>시군구
+      <input id="sggnm" type="text" value="화성시" />
+    </label>
+    <label>읍면동
+      <input id="emdnm" type="text" value="남양읍" />
+    </label>
+    <label class="hint">
+      <input id="onlyMissing" type="checkbox" />
+      좌표 없는 것만
+    </label>
+    <label>Limit
+      <input id="limit" type="number" min="1" max="5000" value="1000" />
+    </label>
+
+    <button id="btnStart">그리기 시작</button>
+    <button id="btnFinish" class="secondary" disabled>폴리곤 종료</button>
+    <button id="btnClear" class="secondary">초기화</button>
+    <button id="btnSearch" disabled>검색 실행</button>
+  </header>
+
+  <div id="map"></div>
+
+  <div id="panel">
+    <div id="status">상태: 준비됨</div>
+    <div>
+      <div id="result">클릭한 좌표가 여기에 표시됩니다.</div>
+      <div class="hint">Tip: 그리는 중에 마지막 점을 우클릭하면 폴리곤이 종료됩니다.</div>
+    </div>
+  </div>
+
+  <!-- Kakao Maps SDK: 본인 앱키로 교체 -->
+  <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=60ef05aec06cf5402a4119487dfcafbe&libraries=services"></script>
+  <script>
+    // ====== 기본 맵 세팅 (남양읍 부근으로 대략 이동 권장 시 아래 center 바꿔도 됨) ======
+    const mapContainer = document.getElementById('map');
+    const map = new kakao.maps.Map(mapContainer, {
+      center: new kakao.maps.LatLng(37.2000, 126.8230),
+      level: 6
+    });
+
+    const geocoder = new kakao.maps.services.Geocoder();
+
+    // ====== UI 엘리먼트 ======
+    const sidonmEl = document.getElementById('sidonm');
+    const sggnmEl = document.getElementById('sggnm');
+    const emdnmEl = document.getElementById('emdnm');
+    const onlyMissingEl = document.getElementById('onlyMissing');
+    const limitEl = document.getElementById('limit');
+
+    const btnStart = document.getElementById('btnStart');
+    const btnFinish = document.getElementById('btnFinish');
+    const btnClear = document.getElementById('btnClear');
+    const btnSearch = document.getElementById('btnSearch');
+
+    const statusEl = document.getElementById('status');
+    const resultEl = document.getElementById('result');
+
+    // ====== 상태 ======
+    let drawing = false;
+    let path = [];               // kakao.maps.LatLng[]
+    let previewPolyline = null;  // 그리는 동안 선
+    let polygon = null;          // 완성된 폴리곤
+    let markers = [];            // 결과 마커
+
+    const API_BASE = ''; // 같은 도메인(3000)에서 띄우는 경우 빈 문자열로 상대경로 사용
+
+    function setStatus(text) { statusEl.textContent = `상태: ${text}`; }
+    function setButtons() {
+      btnStart.disabled = drawing || !!polygon;
+      btnFinish.disabled = !drawing || path.length < 3;
+      btnSearch.disabled = !polygon;
+    }
+
+    function clearPreview() {
+      if (previewPolyline) { previewPolyline.setMap(null); previewPolyline = null; }
+    }
+    function clearPolygon() {
+      if (polygon) { polygon.setMap(null); polygon = null; }
+    }
+    function clearMarkers() {
+      markers.forEach(m => m.setMap(null));
+      markers = [];
+    }
+    function clearAll() {
+      drawing = false;
+      path = [];
+      clearPreview();
+      clearPolygon();
+      clearMarkers();
+      setStatus('초기화 완료');
+      setButtons();
+    }
+
+    function drawPreview() {
+      clearPreview();
+      if (path.length < 2) return;
+      previewPolyline = new kakao.maps.Polyline({
+        path,
+        strokeWeight: 3,
+        strokeColor: '#FFAE00',
+        strokeOpacity: 0.9,
+      });
+      previewPolyline.setMap(map);
+    }
+
+    function buildPolygon() {
+      clearPolygon();
+      if (path.length < 3) return;
+      polygon = new kakao.maps.Polygon({
+        path,
+        strokeWeight: 3,
+        strokeColor: '#39DE2A',
+        strokeOpacity: 0.9,
+        strokeStyle: 'solid',
+        fillColor: '#A2FF99',
+        fillOpacity: 0.5
+      });
+      polygon.setMap(map);
+      setStatus(`폴리곤 완료: 꼭짓점 ${path.length}개`);
+    }
+
+    // ====== 지도 클릭/우클릭 이벤트 ======
+    kakao.maps.event.addListener(map, 'click', function(mouseEvent) {
+      const latlng = mouseEvent.latLng;
+      resultEl.textContent = `클릭한 위치: 위도 ${latlng.getLat().toFixed(6)}, 경도 ${latlng.getLng().toFixed(6)}`;
+
+      if (!drawing) return;
+
+      path.push(latlng);
+      drawPreview();
+      setButtons();
+    });
+
+    kakao.maps.event.addListener(map, 'rightclick', function() {
+      // 그리는 중 우클릭 → 폴리곤 종료
+      if (!drawing) return;
+      if (path.length < 3) {
+        setStatus('꼭짓점이 3개 이상이어야 합니다.');
+        return;
+        }
+      drawing = false;
+      clearPreview();
+      buildPolygon();
+      setButtons();
+    });
+
+    // ====== 버튼 이벤트 ======
+    btnStart.addEventListener('click', () => {
+      clearAll();
+      drawing = true;
+      setStatus('폴리곤 그리는 중… 좌클릭으로 꼭짓점을 추가하고, 우클릭으로 종료하세요.');
+      setButtons();
+    });
+
+    btnFinish.addEventListener('click', () => {
+      if (!drawing) return;
+      if (path.length < 3) { setStatus('꼭짓점이 3개 이상이어야 합니다.'); return; }
+      drawing = false;
+      clearPreview();
+      buildPolygon();
+      setButtons();
+    });
+
+    btnClear.addEventListener('click', () => {
+      clearAll();
+    });
+
+    btnSearch.addEventListener('click', async () => {
+      if (!polygon) { setStatus('먼저 폴리곤을 완성하세요.'); return; }
+      try {
+        setStatus('검색 중…');
+        clearMarkers();
+
+        // path → {lat, lng} 배열
+        const coords = polygon.getPath().map(ll => ({ lat: ll.getLat(), lng: ll.getLng() }));
+
+        const body = {
+          coordinates: coords,
+          sidonm: sidonmEl.value || undefined,
+          sggnm: sggnmEl.value || undefined,
+          emdnm: emdnmEl.value || undefined,
+          onlyMissing: onlyMissingEl.checked,
+          limit: Number(limitEl.value) || 1000
+        };
+
+        const res = await fetch(`${API_BASE}/api/addresses/in-polygon`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || `HTTP ${res.status}`);
+        }
+
+        const data = await res.json();
+        setStatus(`검색 완료: ${data.count}건`);
+        // 마커 표시
+        data.items.forEach(item => {
+          if (item.lat == null || item.lng == null) return;
+          const ll = new kakao.maps.LatLng(item.lat, item.lng);
+          const marker = new kakao.maps.Marker({ map, position: ll });
+          markers.push(marker);
+
+          const iw = new kakao.maps.InfoWindow({
+            content: `<div style="padding:6px 10px; font-size:12px; white-space:nowrap;">${item.road_addr || item.mgt_no}</div>`
+          });
+          kakao.maps.event.addListener(marker, 'click', () => iw.open(map, marker));
+        });
+
+        // 결과가 있으면 맵을 해당 영역으로 약간 맞춤
+        if (data.items && data.items.length > 0) {
+          const bounds = new kakao.maps.LatLngBounds();
+          data.items.forEach(item => {
+            if (item.lat == null || item.lng == null) return;
+            bounds.extend(new kakao.maps.LatLng(item.lat, item.lng));
+          });
+          if (!bounds.isEmpty && typeof bounds.isEmpty === 'function' ? !bounds.isEmpty() : true) {
+            map.setBounds(bounds);
+          }
+        }
+      } catch (e) {
+        console.error(e);
+        setStatus(`오류: ${e.message}`);
+      }
+    });
+
+    // 초기 버튼 상태
+    setButtons();
+  </script>
+</body>
+</html>

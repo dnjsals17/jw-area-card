@@ -1,0 +1,932 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <title>다중 폴리곤 내부 주소 마커 표시</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    
+    .container { display: flex; height: 100vh; }
+    
+    /* 사이드바 */
+    .sidebar { 
+      width: 320px; 
+      background: #f8f9fa; 
+      border-right: 1px solid #dee2e6; 
+      display: flex; 
+      flex-direction: column;
+      overflow: hidden;
+    }
+    
+    .sidebar-header { 
+      padding: 16px; 
+      background: #fff; 
+      border-bottom: 1px solid #dee2e6;
+    }
+    
+    .sidebar-header h2 { margin: 0 0 8px 0; font-size: 18px; }
+    
+    /* 검색 필터 */
+    .search-filters {
+      padding: 12px 16px;
+      background: #fff;
+      border-bottom: 1px solid #dee2e6;
+    }
+    
+    .form-group {
+      margin-bottom: 10px;
+    }
+    
+    .form-group label {
+      display: block;
+      font-size: 13px;
+      color: #495057;
+      margin-bottom: 4px;
+      font-weight: 500;
+    }
+    
+    .form-group input[type="text"],
+    .form-group input[type="number"],
+    .form-group select {
+      width: 100%;
+      padding: 6px 10px;
+      border: 1px solid #ced4da;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    
+    .checkbox-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 14px;
+      margin-top: 8px;
+    }
+    
+    /* 폴리곤 컨트롤 */
+    .polygon-controls {
+      padding: 12px 16px;
+      background: #fff;
+      border-bottom: 1px solid #dee2e6;
+    }
+    
+    .btn {
+      padding: 8px 12px;
+      border: none;
+      border-radius: 4px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    .btn-primary {
+      background: #0d6efd;
+      color: white;
+    }
+    
+    .btn-primary:hover:not(:disabled) {
+      background: #0b5ed7;
+    }
+    
+    .btn-secondary {
+      background: #6c757d;
+      color: white;
+    }
+    
+    .btn-secondary:hover:not(:disabled) {
+      background: #5c636a;
+    }
+    
+    .btn-success {
+      background: #198754;
+      color: white;
+    }
+    
+    .btn-success:hover:not(:disabled) {
+      background: #157347;
+    }
+    
+    .btn-danger {
+      background: #dc3545;
+      color: white;
+    }
+    
+    .btn-danger:hover:not(:disabled) {
+      background: #bb2d3b;
+    }
+    
+    .btn-group {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    
+    .btn-group .btn {
+      flex: 1;
+    }
+    
+    /* 폴리곤 리스트 */
+    .polygon-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 16px;
+      background: #fff;
+    }
+    
+    .polygon-list h3 {
+      font-size: 14px;
+      font-weight: 600;
+      margin: 0 0 12px 0;
+      color: #495057;
+    }
+    
+    .polygon-item {
+      padding: 10px;
+      margin-bottom: 8px;
+      background: #fff;
+      border: 1px solid #dee2e6;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .polygon-item:hover {
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .polygon-item.active {
+      border-color: #0d6efd;
+      background: #e7f1ff;
+    }
+    
+    .polygon-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    
+    .polygon-name {
+      font-weight: 500;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    
+    .color-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      border: 1px solid rgba(0,0,0,0.2);
+    }
+    
+    .polygon-info {
+      font-size: 12px;
+      color: #6c757d;
+      display: flex;
+      gap: 12px;
+    }
+    
+    .polygon-actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    
+    .btn-sm {
+      padding: 4px 8px;
+      font-size: 12px;
+    }
+    
+    .btn-outline {
+      background: white;
+      color: #495057;
+      border: 1px solid #dee2e6;
+    }
+    
+    .btn-outline:hover:not(:disabled) {
+      background: #f8f9fa;
+    }
+    
+    /* 메인 컨텐츠 */
+    .main-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    /* 상태바 */
+    .status-bar {
+      padding: 12px 16px;
+      background: #fff;
+      border-bottom: 1px solid #dee2e6;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .status-text {
+      font-size: 14px;
+      color: #495057;
+    }
+    
+    .view-controls {
+      display: flex;
+      gap: 8px;
+    }
+    
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      font-size: 12px;
+      border-radius: 999px;
+      background: #e7f1ff;
+      color: #0d6efd;
+      font-weight: 500;
+    }
+    
+    #map {
+      flex: 1;
+    }
+    
+    /* 모달 스타일 */
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0,0,0,0.5);
+    }
+    
+    .modal.show {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .modal-content {
+      background-color: #fff;
+      padding: 24px;
+      border-radius: 8px;
+      width: 90%;
+      max-width: 400px;
+    }
+    
+    .modal-header {
+      margin-bottom: 16px;
+    }
+    
+    .modal-header h3 {
+      margin: 0;
+      font-size: 18px;
+    }
+    
+    .modal-body {
+      margin-bottom: 20px;
+    }
+    
+    .modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    
+    /* 반응형 */
+    @media (max-width: 768px) {
+      .sidebar {
+        width: 100%;
+        position: fixed;
+        z-index: 100;
+        transform: translateX(-100%);
+        transition: transform 0.3s;
+      }
+      
+      .sidebar.mobile-open {
+        transform: translateX(0);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- 사이드바 -->
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <h2>🗺️ 다중 폴리곤 주소 검색</h2>
+        <span class="badge">클릭으로 꼭짓점 추가 · 우클릭으로 종료</span>
+      </div>
+      
+      <!-- 검색 필터 -->
+      <div class="search-filters">
+        <div class="form-group">
+          <label>시도</label>
+          <input id="sidonm" type="text" value="경기도" placeholder="예: 경기도" />
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>시군구</label>
+            <input id="sggnm" type="text" value="화성시" placeholder="예: 화성시" />
+          </div>
+          <div class="form-group">
+            <label>읍면동</label>
+            <input id="emdnm" type="text" value="남양읍" placeholder="예: 남양읍" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>검색 제한</label>
+            <input id="limit" type="number" min="1" max="5000" value="1000" />
+          </div>
+          <div class="checkbox-group">
+            <input id="onlyMissing" type="checkbox" />
+            <label for="onlyMissing">좌표 없는 것만</label>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 폴리곤 컨트롤 -->
+      <div class="polygon-controls">
+        <div class="btn-group">
+          <button id="btnNewPolygon" class="btn btn-primary">새 폴리곤</button>
+          <button id="btnFinish" class="btn btn-secondary" disabled>완료</button>
+          <button id="btnClearAll" class="btn btn-danger">전체 초기화</button>
+        </div>
+      </div>
+      
+      <!-- 폴리곤 리스트 -->
+      <div class="polygon-list">
+        <h3>폴리곤 목록 (<span id="polygonCount">0</span>개)</h3>
+        <div id="polygonListContainer"></div>
+      </div>
+    </div>
+    
+    <!-- 메인 컨텐츠 -->
+    <div class="main-content">
+      <!-- 상태바 -->
+      <div class="status-bar">
+        <div class="status-text" id="statusText">준비됨</div>
+        <div class="view-controls">
+          <button id="btnViewAll" class="btn btn-sm btn-outline">전체 보기</button>
+          <button id="btnSearchSelected" class="btn btn-sm btn-success" disabled>선택 폴리곤 검색</button>
+          <button id="btnSearchAll" class="btn btn-sm btn-primary">전체 검색</button>
+        </div>
+      </div>
+      
+      <!-- 지도 -->
+      <div id="map"></div>
+    </div>
+  </div>
+  
+  <!-- 폴리곤 이름 입력 모달 -->
+  <div id="nameModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>폴리곤 이름 입력</h3>
+      </div>
+      <div class="modal-body">
+        <input id="polygonNameInput" type="text" class="form-control" style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px;" placeholder="폴리곤 이름을 입력하세요" />
+      </div>
+      <div class="modal-footer">
+        <button id="btnCancelName" class="btn btn-secondary btn-sm">취소</button>
+        <button id="btnSaveName" class="btn btn-primary btn-sm">저장</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Kakao Maps SDK -->
+  <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=60ef05aec06cf5402a4119487dfcafbe&libraries=services"></script>
+  <script>
+    // ====== 기본 맵 세팅 ======
+    const mapContainer = document.getElementById('map');
+    const map = new kakao.maps.Map(mapContainer, {
+      center: new kakao.maps.LatLng(37.2000, 126.8230),
+      level: 6
+    });
+
+    const geocoder = new kakao.maps.services.Geocoder();
+
+    // ====== 색상 팔레트 ======
+    const colors = [
+      { stroke: '#FF6B6B', fill: '#FFB4B4' },
+      { stroke: '#4ECDC4', fill: '#95E1D3' },
+      { stroke: '#45B7D1', fill: '#96CEB4' },
+      { stroke: '#FFA07A', fill: '#FFEAA7' },
+      { stroke: '#98D8C8', fill: '#C7ECEE' },
+      { stroke: '#F7DC6F', fill: '#F9E79F' },
+      { stroke: '#BB8FCE', fill: '#D7BDE2' },
+      { stroke: '#85C1E2', fill: '#AED6F1' }
+    ];
+
+    // ====== 상태 관리 ======
+    class PolygonManager {
+      constructor() {
+        this.polygons = [];
+        this.currentDrawing = null;
+        this.selectedPolygonId = null;
+        this.markers = new Map(); // polygonId -> markers[]
+      }
+
+      startDrawing() {
+        if (this.currentDrawing) return false;
+        
+        const colorIndex = this.polygons.length % colors.length;
+        this.currentDrawing = {
+          id: Date.now(),
+          name: `폴리곤 ${this.polygons.length + 1}`,
+          path: [],
+          color: colors[colorIndex],
+          previewPolyline: null
+        };
+        return true;
+      }
+
+      addPoint(latlng) {
+        if (!this.currentDrawing) return;
+        this.currentDrawing.path.push(latlng);
+        this.updatePreview();
+      }
+
+      updatePreview() {
+        if (!this.currentDrawing) return;
+        
+        if (this.currentDrawing.previewPolyline) {
+          this.currentDrawing.previewPolyline.setMap(null);
+        }
+        
+        if (this.currentDrawing.path.length < 2) return;
+        
+        this.currentDrawing.previewPolyline = new kakao.maps.Polyline({
+          path: this.currentDrawing.path,
+          strokeWeight: 3,
+          strokeColor: this.currentDrawing.color.stroke,
+          strokeOpacity: 0.9,
+        });
+        this.currentDrawing.previewPolyline.setMap(map);
+      }
+
+      finishDrawing(name) {
+        if (!this.currentDrawing || this.currentDrawing.path.length < 3) return null;
+        
+        // 미리보기 제거
+        if (this.currentDrawing.previewPolyline) {
+          this.currentDrawing.previewPolyline.setMap(null);
+        }
+        
+        // 폴리곤 생성
+        const polygon = new kakao.maps.Polygon({
+          path: this.currentDrawing.path,
+          strokeWeight: 3,
+          strokeColor: this.currentDrawing.color.stroke,
+          strokeOpacity: 0.9,
+          strokeStyle: 'solid',
+          fillColor: this.currentDrawing.color.fill,
+          fillOpacity: 0.5
+        });
+        polygon.setMap(map);
+        
+        const polygonData = {
+          id: this.currentDrawing.id,
+          name: name || this.currentDrawing.name,
+          path: this.currentDrawing.path,
+          polygon: polygon,
+          color: this.currentDrawing.color,
+          visible: true,
+          searchCount: 0
+        };
+        
+        this.polygons.push(polygonData);
+        this.markers.set(polygonData.id, []);
+        this.currentDrawing = null;
+        this.selectedPolygonId = polygonData.id;
+        
+        return polygonData;
+      }
+
+      cancelDrawing() {
+        if (!this.currentDrawing) return;
+        
+        if (this.currentDrawing.previewPolyline) {
+          this.currentDrawing.previewPolyline.setMap(null);
+        }
+        this.currentDrawing = null;
+      }
+
+      selectPolygon(id) {
+        this.selectedPolygonId = id;
+      }
+
+      togglePolygon(id) {
+        const polygon = this.polygons.find(p => p.id === id);
+        if (!polygon) return;
+        
+        polygon.visible = !polygon.visible;
+        polygon.polygon.setMap(polygon.visible ? map : null);
+        
+        // 마커도 함께 토글
+        const markers = this.markers.get(id) || [];
+        markers.forEach(m => m.setMap(polygon.visible ? map : null));
+      }
+
+      deletePolygon(id) {
+        const index = this.polygons.findIndex(p => p.id === id);
+        if (index === -1) return;
+        
+        const polygon = this.polygons[index];
+        polygon.polygon.setMap(null);
+        
+        // 마커 제거
+        const markers = this.markers.get(id) || [];
+        markers.forEach(m => m.setMap(null));
+        this.markers.delete(id);
+        
+        this.polygons.splice(index, 1);
+        
+        if (this.selectedPolygonId === id) {
+          this.selectedPolygonId = null;
+        }
+      }
+
+      clearAllMarkers(polygonId = null) {
+        if (polygonId) {
+          const markers = this.markers.get(polygonId) || [];
+          markers.forEach(m => m.setMap(null));
+          this.markers.set(polygonId, []);
+        } else {
+          this.markers.forEach(markers => {
+            markers.forEach(m => m.setMap(null));
+          });
+          this.markers.clear();
+          this.polygons.forEach(p => {
+            this.markers.set(p.id, []);
+          });
+        }
+      }
+
+      addMarkers(polygonId, items) {
+        const markers = [];
+        items.forEach(item => {
+          if (item.lat == null || item.lng == null) return;
+          
+          const ll = new kakao.maps.LatLng(item.lat, item.lng);
+          const marker = new kakao.maps.Marker({ 
+            map, 
+            position: ll 
+          });
+          
+          const iw = new kakao.maps.InfoWindow({
+            content: `<div style="padding:6px 10px; font-size:12px; white-space:nowrap;">${item.road_addr || item.mgt_no}</div>`
+          });
+          
+          kakao.maps.event.addListener(marker, 'click', () => iw.open(map, marker));
+          markers.push(marker);
+        });
+        
+        this.markers.set(polygonId, markers);
+        return markers.length;
+      }
+
+      getSelectedPolygon() {
+        return this.polygons.find(p => p.id === this.selectedPolygonId);
+      }
+
+      clearAll() {
+        this.cancelDrawing();
+        this.polygons.forEach(p => p.polygon.setMap(null));
+        this.markers.forEach(markers => {
+          markers.forEach(m => m.setMap(null));
+        });
+        this.polygons = [];
+        this.markers.clear();
+        this.selectedPolygonId = null;
+      }
+    }
+
+    const polygonManager = new PolygonManager();
+    const API_BASE = '';
+
+    // ====== UI 업데이트 함수들 ======
+    function updateStatus(text) {
+      document.getElementById('statusText').textContent = text;
+    }
+
+    function updateButtons() {
+      const drawing = !!polygonManager.currentDrawing;
+      const hasPath = drawing && polygonManager.currentDrawing.path.length >= 3;
+      const hasPolygons = polygonManager.polygons.length > 0;
+      const hasSelected = !!polygonManager.selectedPolygonId;
+      
+      document.getElementById('btnNewPolygon').disabled = drawing;
+      document.getElementById('btnFinish').disabled = !hasPath;
+      document.getElementById('btnSearchAll').disabled = !hasPolygons;
+      document.getElementById('btnSearchSelected').disabled = !hasSelected;
+    }
+
+    function updatePolygonList() {
+      const container = document.getElementById('polygonListContainer');
+      const count = document.getElementById('polygonCount');
+      
+      count.textContent = polygonManager.polygons.length;
+      
+      if (polygonManager.polygons.length === 0) {
+        container.innerHTML = '<div style="text-align: center; color: #6c757d; padding: 20px;">폴리곤이 없습니다</div>';
+        return;
+      }
+      
+      container.innerHTML = polygonManager.polygons.map(p => `
+        <div class="polygon-item ${p.id === polygonManager.selectedPolygonId ? 'active' : ''}" data-id="${p.id}">
+          <div class="polygon-header">
+            <div class="polygon-name">
+              <span class="color-dot" style="background: ${p.color.fill}"></span>
+              ${p.name}
+            </div>
+            <input type="checkbox" ${p.visible ? 'checked' : ''} onclick="event.stopPropagation(); polygonManager.togglePolygon(${p.id}); updatePolygonList();" />
+          </div>
+          <div class="polygon-info">
+            <span>꼭짓점: ${p.path.length}개</span>
+            <span>검색결과: ${(polygonManager.markers.get(p.id) || []).length}건</span>
+          </div>
+          <div class="polygon-actions">
+            <button class="btn btn-sm btn-outline" onclick="event.stopPropagation(); focusPolygon(${p.id})">포커스</button>
+            <button class="btn btn-sm btn-outline" onclick="event.stopPropagation(); searchPolygon(${p.id})">검색</button>
+            <button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deletePolygon(${p.id})">삭제</button>
+          </div>
+        </div>
+      `).join('');
+      
+      // 클릭 이벤트 바인딩
+      container.querySelectorAll('.polygon-item').forEach(item => {
+        item.addEventListener('click', function() {
+          const id = parseInt(this.dataset.id);
+          polygonManager.selectPolygon(id);
+          updatePolygonList();
+          updateButtons();
+        });
+      });
+    }
+
+    function focusPolygon(id) {
+      const polygon = polygonManager.polygons.find(p => p.id === id);
+      if (!polygon) return;
+      
+      const bounds = new kakao.maps.LatLngBounds();
+      polygon.path.forEach(point => bounds.extend(point));
+      map.setBounds(bounds);
+    }
+
+    function deletePolygon(id) {
+      if (confirm('이 폴리곤을 삭제하시겠습니까?')) {
+        polygonManager.deletePolygon(id);
+        updatePolygonList();
+        updateButtons();
+        updateStatus('폴리곤 삭제됨');
+      }
+    }
+
+    async function searchPolygon(id) {
+      const polygon = polygonManager.polygons.find(p => p.id === id);
+      if (!polygon) return;
+      
+      try {
+        updateStatus(`${polygon.name} 검색 중...`);
+        polygonManager.clearAllMarkers(id);
+        
+        const coords = polygon.path.map(ll => ({ 
+          lat: ll.getLat(), 
+          lng: ll.getLng() 
+        }));
+        
+        const body = {
+          coordinates: coords,
+          sidonm: document.getElementById('sidonm').value || undefined,
+          sggnm: document.getElementById('sggnm').value || undefined,
+          emdnm: document.getElementById('emdnm').value || undefined,
+          onlyMissing: document.getElementById('onlyMissing').checked,
+          limit: Number(document.getElementById('limit').value) || 1000
+        };
+        
+        const res = await fetch(`${API_BASE}/api/addresses/in-polygon`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || `HTTP ${res.status}`);
+        }
+        
+        const data = await res.json();
+        const markerCount = polygonManager.addMarkers(id, data.items);
+        
+        polygon.searchCount = data.count;
+        updatePolygonList();
+        updateStatus(`${polygon.name}: ${data.count}건 검색 완료 (마커 ${markerCount}개)`);
+        
+        // 결과 영역으로 포커스
+        if (data.items && data.items.length > 0) {
+          const bounds = new kakao.maps.LatLngBounds();
+          data.items.forEach(item => {
+            if (item.lat != null && item.lng != null) {
+              bounds.extend(new kakao.maps.LatLng(item.lat, item.lng));
+            }
+          });
+          map.setBounds(bounds);
+        }
+      } catch (e) {
+        console.error(e);
+        updateStatus(`오류: ${e.message}`);
+      }
+    }
+
+    // ====== 지도 이벤트 ======
+    kakao.maps.event.addListener(map, 'click', function(mouseEvent) {
+      if (!polygonManager.currentDrawing) return;
+      
+      const latlng = mouseEvent.latLng;
+      polygonManager.addPoint(latlng);
+      updateStatus(`꼭짓점 ${polygonManager.currentDrawing.path.length}개 추가됨`);
+      updateButtons();
+    });
+
+    kakao.maps.event.addListener(map, 'rightclick', function() {
+      if (!polygonManager.currentDrawing) return;
+      if (polygonManager.currentDrawing.path.length < 3) {
+        updateStatus('꼭짓점이 3개 이상이어야 합니다.');
+        return;
+      }
+      
+      document.getElementById('nameModal').classList.add('show');
+      document.getElementById('polygonNameInput').value = `폴리곤 ${polygonManager.polygons.length + 1}`;
+      document.getElementById('polygonNameInput').focus();
+    });
+
+    // ====== 버튼 이벤트 ======
+    document.getElementById('btnNewPolygon').addEventListener('click', () => {
+      if (polygonManager.startDrawing()) {
+        updateStatus('클릭으로 꼭짓점 추가, 우클릭으로 종료');
+        updateButtons();
+      }
+    });
+
+    document.getElementById('btnFinish').addEventListener('click', () => {
+      if (!polygonManager.currentDrawing || polygonManager.currentDrawing.path.length < 3) {
+        updateStatus('꼭짓점이 3개 이상이어야 합니다.');
+        return;
+      }
+      
+      document.getElementById('nameModal').classList.add('show');
+      document.getElementById('polygonNameInput').value = `폴리곤 ${polygonManager.polygons.length + 1}`;
+      document.getElementById('polygonNameInput').focus();
+    });
+
+    document.getElementById('btnClearAll').addEventListener('click', () => {
+      if (polygonManager.polygons.length === 0) return;
+      
+      if (confirm('모든 폴리곤과 마커를 삭제하시겠습니까?')) {
+        polygonManager.clearAll();
+        updatePolygonList();
+        updateButtons();
+        updateStatus('전체 초기화 완료');
+      }
+    });
+
+    document.getElementById('btnViewAll').addEventListener('click', () => {
+      if (polygonManager.polygons.length === 0) return;
+      
+      const bounds = new kakao.maps.LatLngBounds();
+      polygonManager.polygons.forEach(p => {
+        p.path.forEach(point => bounds.extend(point));
+      });
+      map.setBounds(bounds);
+    });
+
+    document.getElementById('btnSearchSelected').addEventListener('click', () => {
+      const selected = polygonManager.getSelectedPolygon();
+      if (selected) {
+        searchPolygon(selected.id);
+      }
+    });
+
+    document.getElementById('btnSearchAll').addEventListener('click', async () => {
+      if (polygonManager.polygons.length === 0) return;
+      
+      updateStatus('전체 폴리곤 검색 중...');
+      let totalCount = 0;
+      let totalMarkers = 0;
+      
+      for (const polygon of polygonManager.polygons) {
+        try {
+          polygonManager.clearAllMarkers(polygon.id);
+          
+          const coords = polygon.path.map(ll => ({ 
+            lat: ll.getLat(), 
+            lng: ll.getLng() 
+          }));
+          
+          const body = {
+            coordinates: coords,
+            sidonm: document.getElementById('sidonm').value || undefined,
+            sggnm: document.getElementById('sggnm').value || undefined,
+            emdnm: document.getElementById('emdnm').value || undefined,
+            onlyMissing: document.getElementById('onlyMissing').checked,
+            limit: Number(document.getElementById('limit').value) || 1000
+          };
+          
+          const res = await fetch(`${API_BASE}/api/addresses/in-polygon`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+          });
+          
+          if (!res.ok) continue;
+          
+          const data = await res.json();
+          const markerCount = polygonManager.addMarkers(polygon.id, data.items);
+          
+          polygon.searchCount = data.count;
+          totalCount += data.count;
+          totalMarkers += markerCount;
+          
+          updateStatus(`검색 중... ${polygon.name} 완료`);
+        } catch (e) {
+          console.error(`Error searching polygon ${polygon.name}:`, e);
+        }
+      }
+      
+      updatePolygonList();
+      updateStatus(`전체 검색 완료: 총 ${totalCount}건 (마커 ${totalMarkers}개)`);
+      
+      // 전체 결과 영역으로 포커스
+      if (totalMarkers > 0) {
+        const bounds = new kakao.maps.LatLngBounds();
+        polygonManager.markers.forEach(markers => {
+          markers.forEach(marker => {
+            bounds.extend(marker.getPosition());
+          });
+        });
+        map.setBounds(bounds);
+      }
+    });
+
+    // 모달 이벤트
+    document.getElementById('btnSaveName').addEventListener('click', () => {
+      const name = document.getElementById('polygonNameInput').value.trim();
+      if (!name) {
+        alert('폴리곤 이름을 입력해주세요');
+        return;
+      }
+      
+      const polygon = polygonManager.finishDrawing(name);
+      if (polygon) {
+        updatePolygonList();
+        updateButtons();
+        updateStatus(`${polygon.name} 생성 완료`);
+        document.getElementById('nameModal').classList.remove('show');
+      }
+    });
+
+    document.getElementById('btnCancelName').addEventListener('click', () => {
+      document.getElementById('nameModal').classList.remove('show');
+    });
+
+    // 엔터키로 이름 저장
+    document.getElementById('polygonNameInput').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        document.getElementById('btnSaveName').click();
+      }
+    });
+
+    // ESC키로 모달 닫기
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        const modal = document.getElementById('nameModal');
+        if (modal.classList.contains('show')) {
+          modal.classList.remove('show');
+        }
+      }
+    });
+
+    // 초기화
+    updatePolygonList();
+    updateButtons();
+    updateStatus('준비됨');
+  </script>
+</body>
+</html>

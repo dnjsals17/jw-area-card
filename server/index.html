@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <title>남양읍 주소 일괄 지오코딩</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; }
+    header { padding: 12px 16px; border-bottom: 1px solid #eee; }
+    #map { width: 100%; height: 70vh; }
+    #log { height: 30vh; overflow: auto; padding: 8px 12px; background: #fafafa; border-top: 1px solid #eee; }
+    .ok { color: #0a7; }
+    .err { color: #c00; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>남양읍 주소 일괄 지오코딩</h1>
+    <button id="startBtn">시작</button>
+    <span id="progress"></span>
+  </header>
+  <div id="map"></div>
+  <pre id="log"></pre>
+
+  <!-- Kakao Maps SDK: 본인 앱키로 교체 -->
+  <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=60ef05aec06cf5402a4119487dfcafbe&libraries=services"></script>
+  <script>
+    // ===== 지도/지오코더 세팅 =====
+    const mapContainer = document.getElementById('map');
+    const map = new kakao.maps.Map(mapContainer, {
+      center: new kakao.maps.LatLng(37.2000, 126.8230), // 화성 남양읍 대략 중심
+      level: 6
+    });
+    const geocoder = new kakao.maps.services.Geocoder();
+
+    const logEl = document.getElementById('log');
+    const progressEl = document.getElementById('progress');
+    const startBtn = document.getElementById('startBtn');
+
+    function log(msg, cls='') {
+      const line = document.createElement('div');
+      if (cls) line.className = cls;
+      line.textContent = msg;
+      logEl.appendChild(line);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    // 서버 API 베이스 URL (같은 호스트면 상대경로로도 가능)
+    const API_BASE = 'http://localhost:3000';
+
+    async function fetchAddresses() {
+      const url = `${API_BASE}/api/addresses?onlyMissing=true&sidonm=${encodeURIComponent('경기도')}&sggnm=${encodeURIComponent('화성시')}&emdnm=${encodeURIComponent('남양읍')}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('Failed to fetch addresses');
+      return res.json(); // { count, items: [...] }
+    }
+
+    function addressSearch(address) {
+      return new Promise((resolve) => {
+        geocoder.addressSearch(address, function(result, status) {
+          if (status === kakao.maps.services.Status.OK && result && result.length > 0) {
+            const { x, y } = result[0]; // x: lng, y: lat
+            resolve({ ok: true, lat: parseFloat(y), lng: parseFloat(x) });
+          } else {
+            resolve({ ok: false, reason: status });
+          }
+        });
+      });
+    }
+
+    async function updateCoords(mgtNo, lat, lng) {
+      const res = await fetch(`${API_BASE}/api/address/${encodeURIComponent(mgtNo)}/coords`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lat, lng })
+      });
+      if (!res.ok) throw new Error('Failed to update coords');
+      return res.json();
+    }
+
+    function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+    async function run() {
+      startBtn.disabled = true;
+      try {
+        const data = await fetchAddresses();
+        const items = data.items || [];
+        log(`총 ${items.length}건 수신`);
+
+        let done = 0;
+        for (const item of items) {
+          // 이미 좌표가 있으면 스킵하고 싶다면 아래 주석 해제:
+          // if (item.lat != null && item.lng != null) { done++; progressEl.textContent = `${done}/${items.length}`; continue; }
+
+          const addr = item.road_addr; // 서버에서 구성한 도로명주소 문자열
+          const mgtNo = item.mgt_no;
+
+          // 지오코딩 호출 (간단한 rate-limit: 150~300ms 간격)
+          const { ok, lat, lng, reason } = await addressSearch(addr);
+          if (!ok) {
+            log(`[FAIL] ${mgtNo} ${addr} → geocode 실패 (${reason})`, 'err');
+            done++; progressEl.textContent = `${done}/${items.length}`;
+            // 실패 시, 도로명 + (우편번호) 같이 변형 시도 등 재시도 로직을 추가해도 됩니다.
+            await sleep(100); // 다음 요청까지 잠깐 대기
+            continue;
+          }
+
+          // DB 업데이트
+          try {
+            await updateCoords(mgtNo, lat, lng);
+            log(`[OK] ${mgtNo} ${addr} → ${lat.toFixed(6)}, ${lng.toFixed(6)}`, 'ok');
+
+            // 지도에 마커 표시(옵션)
+            const coords = new kakao.maps.LatLng(lat, lng);
+            new kakao.maps.Marker({ map, position: coords });
+
+            // 보기 좋게 지도 중심 이동(필요시 주석)
+            // map.setCenter(coords);
+          } catch (e) {
+            log(`[ERR] ${mgtNo} ${addr} → DB 업데이트 실패: ${e.message}`, 'err');
+          }
+
+          done++;
+          progressEl.textContent = `${done}/${items.length}`;
+          await sleep(50); // 카카오 지오코딩 쿼터 보호용 딜레이
+        }
+
+        log('완료!');
+      } catch (e) {
+        log(`에러: ${e.message}`, 'err');
+      } finally {
+        startBtn.disabled = false;
+      }
+    }
+
+    startBtn.addEventListener('click', run);
+  </script>
+</body>
+</html>
