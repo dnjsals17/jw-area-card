@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Excel File</title>
+</head>
+<body>
+    <h1>Create Excel File</h1>
+    <form id="excelForm">
+        <label for="fileName">File Name:</label><br>
+        <input type="text" id="fileName" name="fileName" value="my-excel-file"><br><br>
+
+        <label for="sheetName">Sheet Name:</label><br>
+        <input type="text" id="sheetName" name="sheetName" value="MySheet"><br><br>
+
+        <label for="columns">Column Names (comma-separated):</label><br>
+        <input type="text" id="columns" name="columns" value="ID,Name,Email"><br><br>
+
+        <button type="submit">Create and Download Excel</button>
+    </form>
+
+    <script>
+        document.getElementById('excelForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const fileName = document.getElementById('fileName').value;
+            const sheetName = document.getElementById('sheetName').value;
+            const columns = document.getElementById('columns').value.split(',').map(s => s.trim());
+
+            const response = await fetch('/create-excel', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ fileName, sheetName, columns }),
+            });
+
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = `${fileName}.xlsx`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+            } else {
+                alert('Failed to create Excel file.');
+            }
+        });
+    </script>
+</body>
+</html>
