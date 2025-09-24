@@ -1,6 +1,3 @@
-import * as Excel from "exceljs/dist/exceljs.min.js";
-import { saveAs } from "file-saver";
-
 const express = require('express');
 const Excel = require('exceljs');
 const cors = require('cors');
