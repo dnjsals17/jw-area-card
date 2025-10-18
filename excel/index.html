@@ -28,7 +28,7 @@
             const sheetName = document.getElementById('sheetName').value;
             const columns = document.getElementById('columns').value.split(',').map(s => s.trim());
 
-            const response = await fetch('/create-excel', {
+            const response = await fetch('http://localhost:3001/create-excel', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
